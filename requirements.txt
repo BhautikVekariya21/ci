@@ -1,22 +1,9 @@
-# Core ML Libraries
-pandas==2.0.3
-numpy==1.24.3
-scikit-learn==1.3.2
-
-# NLP Libraries
-nltk==3.8.1
-
-# MLflow and Tracking
-mlflow==2.9.2
-pyyaml==6.0.1
-
-# Visualization
-matplotlib==3.7.4
-seaborn==0.13.0
-
-# DVC for pipeline management
-dvc==3.30.1
-dvc-s3==2.23.0
-
-# Utilities
-python-dotenv==1.0.0
+pandas
+numpy
+scikit-learn
+nltk
+mlflow
+pyyaml
+matplotlib
+seaborn
+dvc
