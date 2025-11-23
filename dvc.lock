@@ -11,6 +11,10 @@ stages:
       hash: md5
       md5: d498fad07ab8c5dc41fa5efa811f2029
       size: 1021
+    - path: src/utils.py
+      hash: md5
+      md5: 0f12e244305db5f79f2982390615740e
+      size: 952
     outs:
     - path: data/raw
       hash: md5
@@ -33,6 +37,10 @@ stages:
       hash: md5
       md5: 2514cd9c250cec79a2dce8a179d6393b
       size: 2875
+    - path: src/utils.py
+      hash: md5
+      md5: 0f12e244305db5f79f2982390615740e
+      size: 952
     outs:
     - path: data/processed
       hash: md5
@@ -55,6 +63,10 @@ stages:
       hash: md5
       md5: e69a276e2dc9f96bac42443f9b858af3
       size: 1229
+    - path: src/utils.py
+      hash: md5
+      md5: 0f12e244305db5f79f2982390615740e
+      size: 952
     outs:
     - path: data/features
       hash: md5
@@ -77,6 +89,10 @@ stages:
       hash: md5
       md5: 79662f02626bf1f71633667c103812c0
       size: 3800
+    - path: src/utils.py
+      hash: md5
+      md5: 0f12e244305db5f79f2982390615740e
+      size: 952
     outs:
     - path: models/model.pkl
       hash: md5
@@ -85,10 +101,11 @@ stages:
   model_evaluation:
     cmd: python src/model_evaluation.py
     deps:
-    - path: data/features/test_bow.csv
+    - path: data/features
       hash: md5
-      md5: 451cfa64bd8e403eb68a158f832f0ac5
-      size: 23760375
+      md5: ce04f6a9ec866079a5fb3e79c789d7c3.dir
+      size: 118902470
+      nfiles: 2
     - path: models/model.pkl
       hash: md5
       md5: 3b76bcaec1b535bec35a809129c798c8
@@ -101,7 +118,19 @@ stages:
       hash: md5
       md5: 0ba0657d630021eaa2e304d02339ad77
       size: 4284
+    - path: src/utils.py
+      hash: md5
+      md5: 0f12e244305db5f79f2982390615740e
+      size: 952
     outs:
+    - path: evaluation/classification_report.csv
+      hash: md5
+      md5: 53b8afccf02bc082d526a971831db7e6
+      size: 421
+    - path: evaluation/confusion_matrix.png
+      hash: md5
+      md5: 21ff9d83d800df73ff0b74e0f1d68d81
+      size: 21533
     - path: evaluation/metrics.json
       hash: md5
       md5: b498b7241600d1bfdc2f3b9c98cef973
