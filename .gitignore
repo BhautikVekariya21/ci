@@ -1,4 +1,38 @@
-/models
-/evaluation
-/placement.csv
-/mlruns
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Data
+data/raw/
+data/processed/
+data/features/
+
+# Models
+models/*.pkl
+
+# Evaluation
+evaluation/
+
+# DVC
+.dvc/tmp/
+.dvc/cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
