@@ -14,27 +14,24 @@ def setup_mlflow():
     dagshub_token = os.getenv('DAGSHUB_TOKEN')
     
     if is_ci and dagshub_token:
-        # Use DagsHub with token authentication (no OAuth)
+        # Use DagsHub with token authentication
         dagshub_url = "https://dagshub.com/BhautikVekariya21/ci.mlflow"
         
-        # Set environment variables for authentication
         os.environ['MLFLOW_TRACKING_URI'] = dagshub_url
         os.environ['MLFLOW_TRACKING_USERNAME'] = 'BhautikVekariya21'
         os.environ['MLFLOW_TRACKING_PASSWORD'] = dagshub_token
         
-        # Configure MLflow
         mlflow.set_tracking_uri(dagshub_url)
         
         logger.info("✅ Using DagsHub MLflow with token authentication")
         return "dagshub"
     else:
-        # Use local MLflow for development
         mlflow.set_tracking_uri("file:./mlruns")
         logger.info("✅ Using local MLflow tracking")
         return "local"
 
 def main():
-    # Setup MLflow (DagsHub with token or local)
+    # Setup MLflow
     mlflow_backend = setup_mlflow()
     
     # Load all params
@@ -111,14 +108,25 @@ def main():
         
         # Save model locally
         os.makedirs("models", exist_ok=True)
-        with open("models/model.pkl", "wb") as f:
+        model_path = "models/model.pkl"
+        with open(model_path, "wb") as f:
             pickle.dump(model, f)
         
-        # Log model to MLflow
-        mlflow.sklearn.log_model(model, "model")
-        
-        # Log model artifact
-        mlflow.log_artifact("models/model.pkl")
+        # Log model as artifact (compatible with DagsHub)
+        try:
+            # Try to log model with MLflow sklearn
+            if mlflow_backend == "local":
+                # Full model logging for local MLflow
+                mlflow.sklearn.log_model(model, "model")
+            else:
+                # For DagsHub, just log as artifact to avoid unsupported endpoints
+                mlflow.log_artifact(model_path, "model")
+                logger.info("Model logged as artifact (DagsHub compatible)")
+        except Exception as e:
+            # Fallback to artifact logging
+            logger.warning(f"MLflow model logging failed: {e}")
+            logger.info("Falling back to artifact logging...")
+            mlflow.log_artifact(model_path, "model")
         
         # Log feature importance
         if hasattr(model, 'feature_importances_'):
@@ -127,10 +135,11 @@ def main():
                 'importance': model.feature_importances_
             }).sort_values('importance', ascending=False).head(20)
             
-            feature_importance.to_csv("models/feature_importance.csv", index=False)
-            mlflow.log_artifact("models/feature_importance.csv")
+            importance_path = "models/feature_importance.csv"
+            feature_importance.to_csv(importance_path, index=False)
+            mlflow.log_artifact(importance_path)
             
-            # Log top 5 feature importances
+            # Log top 5 feature importances as metrics
             for idx, row in feature_importance.head(5).iterrows():
                 mlflow.log_metric(f"feature_{int(row['feature_index'])}_importance", row['importance'])
         

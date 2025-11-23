@@ -29,7 +29,6 @@ def setup_mlflow():
     dagshub_token = os.getenv('DAGSHUB_TOKEN')
     
     if is_ci and dagshub_token:
-        # Use DagsHub with token authentication
         dagshub_url = "https://dagshub.com/BhautikVekariya21/ci.mlflow"
         
         os.environ['MLFLOW_TRACKING_URI'] = dagshub_url
@@ -121,15 +120,17 @@ def main():
 
         # Save metrics
         os.makedirs("evaluation", exist_ok=True)
-        with open("evaluation/metrics.json", "w") as f:
+        metrics_path = "evaluation/metrics.json"
+        with open(metrics_path, "w") as f:
             json.dump(metrics_dict, f, indent=4)
         
-        mlflow.log_artifact("evaluation/metrics.json")
+        mlflow.log_artifact(metrics_path)
         
         # Confusion matrix
         logger.info("Creating confusion matrix...")
-        cm = plot_confusion_matrix(y_test, y_pred)
-        mlflow.log_artifact("evaluation/confusion_matrix.png")
+        cm_path = "evaluation/confusion_matrix.png"
+        cm = plot_confusion_matrix(y_test, y_pred, cm_path)
+        mlflow.log_artifact(cm_path)
         
         mlflow.log_metric("true_negatives", int(cm[0][0]))
         mlflow.log_metric("false_positives", int(cm[0][1]))
@@ -150,8 +151,9 @@ def main():
                                       target_names=['Sadness', 'Happiness'],
                                       output_dict=True)
         report_df = pd.DataFrame(report).transpose()
-        report_df.to_csv("evaluation/classification_report.csv")
-        mlflow.log_artifact("evaluation/classification_report.csv")
+        report_path = "evaluation/classification_report.csv"
+        report_df.to_csv(report_path)
+        mlflow.log_artifact(report_path)
         
         mlflow.log_metric("sadness_precision", report['Sadness']['precision'])
         mlflow.log_metric("sadness_recall", report['Sadness']['recall'])
@@ -160,7 +162,15 @@ def main():
         mlflow.log_metric("happiness_recall", report['Happiness']['recall'])
         mlflow.log_metric("happiness_f1", report['Happiness']['f1-score'])
         
-        mlflow.sklearn.log_model(model, "evaluated_model")
+        # Log model as artifact
+        try:
+            if mlflow_backend == "local":
+                mlflow.sklearn.log_model(model, "evaluated_model")
+            else:
+                mlflow.log_artifact("models/model.pkl", "evaluated_model")
+        except Exception as e:
+            logger.warning(f"Model logging failed: {e}")
+            mlflow.log_artifact("models/model.pkl", "evaluated_model")
         
         if mlflow_backend == "dagshub":
             logger.info("✅ Evaluation logged to DagsHub")

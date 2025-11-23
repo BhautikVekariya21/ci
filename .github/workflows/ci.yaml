@@ -59,7 +59,7 @@ jobs:
           DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
         run: |
           echo "🔧 Configuring DVC for DagsHub..."
-          dvc remote add origin https://dagshub.com/BhautikVekariya21/ci.dvc || true
+          dvc remote add origin https://dagshub.com/BhautikVekariya21/ci.dvc -f || true
           dvc remote modify origin auth basic
           dvc remote modify origin user BhautikVekariya21
           dvc remote modify origin password $DAGSHUB_TOKEN
