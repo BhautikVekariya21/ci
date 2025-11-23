@@ -1,0 +1,15 @@
+[core]
+    remote = amzns3
+    autostage = true
+['remote "trash"']
+    url = C:\Users\bhaut\AppData\Local\Temp
+['remote "mlopslocal"']
+    url = C:\Users\bhaut\AppData\Local\Temp\mlopslocal
+['remote "local"']
+    url = C:\Users\bhaut\AppData\Local\Temp\mlopslocal
+['remote "awsdvc"']
+    url = s3://amznmlopss3
+['remote "awss3"']
+    url = s3://aws-s3-ci-cd
+['remote "amzns3"']
+    url = s3://amzn-s3-ci-cd

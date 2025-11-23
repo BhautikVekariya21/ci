@@ -1,0 +1,31 @@
+data_ingestion:
+  test_size: 0.20
+  random_state: 41
+
+data_preprocessing:
+  lowercase: true
+  remove_urls: true
+  remove_punctuations: true
+  remove_numbers: true
+  remove_stopwords: true
+  apply_lemmatization: true
+  min_words_per_tweet: 3
+
+feature_engineering:
+  vectorizer: tfidf          # TF-IDF explicitly
+  max_features: 3000
+  ngram_range: [1, 2]
+
+model_building:
+  model_type: random_forest
+  n_estimators: 300
+  max_depth: 6
+  random_state: 41
+  n_jobs: -1                 # use all cores
+
+model_evaluation:
+  metrics:
+    - accuracy
+    - precision
+    - recall
+    - auc
