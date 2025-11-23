@@ -2,9 +2,9 @@
 import pandas as pd
 import pickle
 import json
-import dagshub
 import mlflow
 import mlflow.sklearn
+import os
 from sklearn.metrics import (
     accuracy_score, 
     precision_score, 
@@ -21,10 +21,27 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from utils import load_params, logger
-import os
 
-# Initialize DagsHub
-dagshub.init(repo_owner='BhautikVekariya21', repo_name='ci', mlflow=True)
+def setup_mlflow():
+    """Setup MLflow - DagsHub in CI, local otherwise"""
+    
+    is_ci = os.getenv('CI') == 'true'
+    dagshub_token = os.getenv('DAGSHUB_TOKEN')
+    
+    if is_ci and dagshub_token:
+        try:
+            import dagshub
+            dagshub.init(repo_owner='BhautikVekariya21', repo_name='ci', mlflow=True)
+            logger.info("✅ Using DagsHub MLflow tracking")
+            return "dagshub"
+        except Exception as e:
+            logger.warning(f"⚠️ DagsHub init failed: {e}, using local MLflow")
+            mlflow.set_tracking_uri("file:./mlruns")
+            return "local"
+    else:
+        mlflow.set_tracking_uri("file:./mlruns")
+        logger.info("✅ Using local MLflow tracking")
+        return "local"
 
 def plot_confusion_matrix(y_test, y_pred, save_path="evaluation/confusion_matrix.png"):
     """Plot and save confusion matrix"""
@@ -42,6 +59,9 @@ def plot_confusion_matrix(y_test, y_pred, save_path="evaluation/confusion_matrix
     return cm
 
 def main():
+    # Setup MLflow
+    mlflow_backend = setup_mlflow()
+    
     params = load_params()['model_evaluation']['metrics']
     
     # Set experiment
@@ -49,6 +69,9 @@ def main():
     
     # Start MLflow run
     with mlflow.start_run(run_name="model_evaluation"):
+        
+        mlflow.set_tag("mlflow_backend", mlflow_backend)
+        mlflow.set_tag("stage", "evaluation")
         
         # Load model
         logger.info("Loading model for evaluation...")
@@ -58,7 +81,6 @@ def main():
         X_test = test_df.iloc[:, :-1].values
         y_test = test_df.iloc[:, -1].values
         
-        # Log test dataset size
         mlflow.log_param("test_samples", len(X_test))
         mlflow.log_param("n_features", X_test.shape[1])
 
@@ -67,7 +89,7 @@ def main():
         y_pred = model.predict(X_test)
         y_proba = model.predict_proba(X_test)[:, 1]
 
-        # Calculate all metrics
+        # Calculate metrics
         metrics_dict = {}
         
         if "accuracy" in params:
@@ -86,47 +108,32 @@ def main():
             metrics_dict["auc"] = round(roc_auc_score(y_test, y_proba), 4)
             mlflow.log_metric("auc", metrics_dict["auc"])
         
-        # Additional metrics
         f1 = round(f1_score(y_test, y_pred), 4)
         metrics_dict["f1_score"] = f1
         mlflow.log_metric("f1_score", f1)
 
-        # Log metrics summary
         logger.info("📊 Model Metrics:")
         for metric_name, value in metrics_dict.items():
             logger.info(f"  {metric_name}: {value:.4f}")
 
-        # Save metrics locally
+        # Save metrics
         os.makedirs("evaluation", exist_ok=True)
         with open("evaluation/metrics.json", "w") as f:
             json.dump(metrics_dict, f, indent=4)
         
-        # Log metrics file as artifact
         mlflow.log_artifact("evaluation/metrics.json")
         
-        # Create and log confusion matrix
+        # Confusion matrix
         logger.info("Creating confusion matrix...")
         cm = plot_confusion_matrix(y_test, y_pred)
         mlflow.log_artifact("evaluation/confusion_matrix.png")
         
-        # Log confusion matrix values
         mlflow.log_metric("true_negatives", int(cm[0][0]))
         mlflow.log_metric("false_positives", int(cm[0][1]))
         mlflow.log_metric("false_negatives", int(cm[1][0]))
         mlflow.log_metric("true_positives", int(cm[1][1]))
         
-        # Calculate and log additional metrics
-        total_samples = cm.sum()
-        correctly_classified = cm.trace()
-        misclassified = total_samples - correctly_classified
-        
-        mlflow.log_metric("total_samples", int(total_samples))
-        mlflow.log_metric("correctly_classified", int(correctly_classified))
-        mlflow.log_metric("misclassified", int(misclassified))
-        mlflow.log_metric("error_rate", float(misclassified / total_samples))
-        
-        # Save classification report
-        logger.info("Generating classification report...")
+        # Classification report
         report = classification_report(y_test, y_pred, 
                                       target_names=['Sadness', 'Happiness'],
                                       output_dict=True)
@@ -134,24 +141,18 @@ def main():
         report_df.to_csv("evaluation/classification_report.csv")
         mlflow.log_artifact("evaluation/classification_report.csv")
         
-        # Log per-class metrics
         mlflow.log_metric("sadness_precision", report['Sadness']['precision'])
         mlflow.log_metric("sadness_recall", report['Sadness']['recall'])
-        mlflow.log_metric("sadness_f1", report['Sadness']['f1-score'])
-        
         mlflow.log_metric("happiness_precision", report['Happiness']['precision'])
         mlflow.log_metric("happiness_recall", report['Happiness']['recall'])
-        mlflow.log_metric("happiness_f1", report['Happiness']['f1-score'])
         
-        # Log model - REMOVED registered_model_name
         mlflow.sklearn.log_model(model, "evaluated_model")
         
-        # Tag the run
-        mlflow.set_tag("stage", "evaluation")
-        mlflow.set_tag("model_type", "RandomForestClassifier")
-
-        logger.info("✅ Evaluation complete and logged to DagsHub")
-        logger.info(f"🌐 View results: https://dagshub.com/BhautikVekariya21/ci.mlflow")
+        if mlflow_backend == "dagshub":
+            logger.info("✅ Evaluation logged to DagsHub")
+            logger.info("🌐 View: https://dagshub.com/BhautikVekariya21/ci.mlflow")
+        else:
+            logger.info("✅ Evaluation logged locally")
 
 if __name__ == "__main__":
     main()

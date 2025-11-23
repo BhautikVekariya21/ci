@@ -2,16 +2,39 @@
 import pandas as pd
 import pickle
 import os
-import dagshub
 import mlflow
 import mlflow.sklearn
 from sklearn.ensemble import RandomForestClassifier
 from utils import load_params, logger
 
-# Initialize DagsHub
-dagshub.init(repo_owner='BhautikVekariya21', repo_name='ci', mlflow=True)
+def setup_mlflow():
+    """Setup MLflow - DagsHub in CI, local otherwise"""
+    
+    # Check if running in GitHub Actions
+    is_ci = os.getenv('CI') == 'true'
+    dagshub_token = os.getenv('DAGSHUB_TOKEN')
+    
+    if is_ci and dagshub_token:
+        # Use DagsHub in CI
+        try:
+            import dagshub
+            dagshub.init(repo_owner='BhautikVekariya21', repo_name='ci', mlflow=True)
+            logger.info("✅ Using DagsHub MLflow tracking")
+            return "dagshub"
+        except Exception as e:
+            logger.warning(f"⚠️ DagsHub init failed: {e}, using local MLflow")
+            mlflow.set_tracking_uri("file:./mlruns")
+            return "local"
+    else:
+        # Use local MLflow for development
+        mlflow.set_tracking_uri("file:./mlruns")
+        logger.info("✅ Using local MLflow tracking")
+        return "local"
 
 def main():
+    # Setup MLflow (DagsHub or local)
+    mlflow_backend = setup_mlflow()
+    
     # Load all params
     all_params = load_params()
     params = all_params["model_building"]
@@ -22,7 +45,12 @@ def main():
     # Start MLflow run
     with mlflow.start_run(run_name="random_forest_training"):
         
-        # Log all parameters from different stages
+        # Log backend type
+        mlflow.set_tag("mlflow_backend", mlflow_backend)
+        mlflow.set_tag("model_type", "RandomForestClassifier")
+        mlflow.set_tag("framework", "sklearn")
+        
+        # Log all parameters
         mlflow.log_params({
             "n_estimators": params["n_estimators"],
             "max_depth": params["max_depth"],
@@ -83,12 +111,8 @@ def main():
         with open("models/model.pkl", "wb") as f:
             pickle.dump(model, f)
         
-        # Log model to MLflow (DagsHub) - REMOVED registered_model_name
-        mlflow.sklearn.log_model(
-            model, 
-            "model"
-            # REMOVED: registered_model_name="RandomForestSentimentClassifier"
-        )
+        # Log model to MLflow
+        mlflow.sklearn.log_model(model, "model")
         
         # Log model artifact
         mlflow.log_artifact("models/model.pkl")
@@ -107,17 +131,16 @@ def main():
             for idx, row in feature_importance.head(5).iterrows():
                 mlflow.log_metric(f"feature_{int(row['feature_index'])}_importance", row['importance'])
         
-        # Log model parameters summary
+        # Log model parameters
         mlflow.log_metric("model_n_estimators", model.n_estimators)
         mlflow.log_metric("model_max_depth", model.max_depth if model.max_depth else 0)
         
-        # Tag the model
-        mlflow.set_tag("model_type", "RandomForestClassifier")
-        mlflow.set_tag("framework", "sklearn")
-        mlflow.set_tag("task", "sentiment_classification")
-        
-        logger.info("✅ Model trained and logged to DagsHub successfully")
-        logger.info(f"🌐 View on DagsHub: https://dagshub.com/BhautikVekariya21/ci.mlflow")
+        if mlflow_backend == "dagshub":
+            logger.info("✅ Model trained and logged to DagsHub")
+            logger.info("🌐 View: https://dagshub.com/BhautikVekariya21/ci.mlflow")
+        else:
+            logger.info("✅ Model trained and logged locally")
+            logger.info("🌐 View: Run 'mlflow ui' and visit http://localhost:5000")
 
 if __name__ == "__main__":
     main()
