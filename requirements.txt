@@ -7,4 +7,5 @@ pyyaml
 matplotlib
 seaborn
 dvc
+dvc-s3
 botocare
