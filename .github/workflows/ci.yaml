@@ -33,7 +33,7 @@ jobs:
       
       - name: Run pipeline
         run: |
-          dvc remote add -d myremote s3://amazn-a3-ci-cd || true
+          dvc remote add -d myremote s3://amazn-s3-ci-cd || true
           dvc pull || true
           dvc repro
           dvc push || true
