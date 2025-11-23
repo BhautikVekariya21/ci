@@ -1,3 +1,4 @@
+# .github/workflows/ci.yml
 name: CI Pipeline with DagsHub
 
 on:
@@ -57,18 +58,22 @@ jobs:
         env:
           DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
         run: |
+          echo "🔧 Configuring DVC for DagsHub..."
           dvc remote add origin https://dagshub.com/BhautikVekariya21/ci.dvc || true
           dvc remote modify origin auth basic
           dvc remote modify origin user BhautikVekariya21
           dvc remote modify origin password $DAGSHUB_TOKEN
           dvc remote default origin
+          echo "✅ DVC configured"
       
-      - name: Pull DVC data
+      - name: Pull DVC data from DagsHub
         env:
           DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
-        run: dvc pull || echo "⚠️ No data to pull"
+        run: |
+          echo "📥 Pulling data from DagsHub..."
+          dvc pull || echo "⚠️ No data to pull"
       
-      - name: Run DVC pipeline
+      - name: Run DVC pipeline with DagsHub MLflow
         env:
           CI: 'true'
           DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
@@ -79,17 +84,14 @@ jobs:
       
       - name: Display metrics
         run: |
-          echo "📊 Model Metrics:"
+          echo "📊 Model Performance:"
           cat evaluation/metrics.json | python -m json.tool || echo "No metrics"
       
-      - name: Test predictions
+      - name: Quick prediction tests
         run: |
           python << 'EOF'
-          import pickle
-          import pandas as pd
+          import pickle, pandas as pd, re, nltk
           from sklearn.feature_extraction.text import TfidfVectorizer
-          import re
-          import nltk
           from nltk.corpus import stopwords
           from nltk.stem import WordNetLemmatizer
           
@@ -105,10 +107,8 @@ jobs:
                   self.lemmatizer = WordNetLemmatizer()
                   self.stop_words = set(stopwords.words('english'))
                   self.punct = r"""!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~"""
-              
               def clean_text(self, text):
-                  if not isinstance(text, str) or not text.strip():
-                      return ''
+                  if not isinstance(text, str) or not text.strip(): return ''
                   text = text.strip().lower()
                   text = re.sub(r'https?://\S+|www\.\S+', '', text)
                   text = text.translate(str.maketrans('', '', self.punct))
@@ -118,30 +118,28 @@ jobs:
                   return text.strip()
           
           preprocessor = TextPreprocessor()
-          
           tests = [
-              ('I love this beautiful day!', 'happy'),
-              ('I am so sad and disappointed.', 'sad'),
+              ('I love this!', 'happy'),
+              ('So sad today.', 'sad'),
           ]
           
-          print('\n🧪 Quick Prediction Tests:')
+          print('\n🧪 Quick Tests:')
           for text, expected in tests:
-              cleaned = preprocessor.clean_text(text)
-              vec = vectorizer.transform([cleaned])
-              pred = model.predict(vec)[0]
-              sentiment = 'happy' if pred == 1 else 'sad'
-              status = '✅' if sentiment == expected else '❌'
-              print(f'{status} "{text}" -> {sentiment}')
+              vec = vectorizer.transform([preprocessor.clean_text(text)])
+              sentiment = 'happy' if model.predict(vec)[0] == 1 else 'sad'
+              print(f'{"✅" if sentiment == expected else "❌"} "{text}" -> {sentiment}')
           EOF
       
       - name: Run pytest
-        run: pytest -v || echo "⚠️ Some tests failed"
+        run: pytest -v --tb=short || echo "⚠️ Some tests failed"
       
       - name: Push to DagsHub
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         env:
           DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
-        run: dvc push || echo "⚠️ Push failed"
+        run: |
+          echo "📤 Pushing to DagsHub..."
+          dvc push || echo "⚠️ Push failed"
       
       - name: Upload artifacts
         if: always()
@@ -153,11 +151,12 @@ jobs:
             models/model.pkl
             mlruns/
           retention-days: 30
+          if-no-files-found: warn
       
       - name: Create summary
         if: always()
         run: |
-          echo "## 🎯 CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎯 Pipeline Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📊 Metrics" >> $GITHUB_STEP_SUMMARY
           if [ -f evaluation/metrics.json ]; then
@@ -166,7 +165,7 @@ jobs:
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🌐 DagsHub" >> $GITHUB_STEP_SUMMARY
-          echo "- 📊 [MLflow](https://dagshub.com/BhautikVekariya21/ci.mlflow)" >> $GITHUB_STEP_SUMMARY
-          echo "- 📦 [DVC](https://dagshub.com/BhautikVekariya21/ci.dvc)" >> $GITHUB_STEP_SUMMARY
-          echo "- 🌐 [Repo](https://dagshub.com/BhautikVekariya21/ci)" >> $GITHUB_STEP_SUMMARY
+          echo "### 🌐 DagsHub Links" >> $GITHUB_STEP_SUMMARY
+          echo "- 📊 [MLflow Tracking](https://dagshub.com/BhautikVekariya21/ci.mlflow)" >> $GITHUB_STEP_SUMMARY
+          echo "- 📦 [DVC Storage](https://dagshub.com/BhautikVekariya21/ci.dvc)" >> $GITHUB_STEP_SUMMARY
+          echo "- 🌐 [Main Repo](https://dagshub.com/BhautikVekariya21/ci)" >> $GITHUB_STEP_SUMMARY

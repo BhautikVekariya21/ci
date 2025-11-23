@@ -23,21 +23,23 @@ import seaborn as sns
 from utils import load_params, logger
 
 def setup_mlflow():
-    """Setup MLflow - DagsHub in CI, local otherwise"""
+    """Setup MLflow with token-based authentication for DagsHub"""
     
     is_ci = os.getenv('CI') == 'true'
     dagshub_token = os.getenv('DAGSHUB_TOKEN')
     
     if is_ci and dagshub_token:
-        try:
-            import dagshub
-            dagshub.init(repo_owner='BhautikVekariya21', repo_name='ci', mlflow=True)
-            logger.info("✅ Using DagsHub MLflow tracking")
-            return "dagshub"
-        except Exception as e:
-            logger.warning(f"⚠️ DagsHub init failed: {e}, using local MLflow")
-            mlflow.set_tracking_uri("file:./mlruns")
-            return "local"
+        # Use DagsHub with token authentication
+        dagshub_url = "https://dagshub.com/BhautikVekariya21/ci.mlflow"
+        
+        os.environ['MLFLOW_TRACKING_URI'] = dagshub_url
+        os.environ['MLFLOW_TRACKING_USERNAME'] = 'BhautikVekariya21'
+        os.environ['MLFLOW_TRACKING_PASSWORD'] = dagshub_token
+        
+        mlflow.set_tracking_uri(dagshub_url)
+        
+        logger.info("✅ Using DagsHub MLflow with token authentication")
+        return "dagshub"
     else:
         mlflow.set_tracking_uri("file:./mlruns")
         logger.info("✅ Using local MLflow tracking")
@@ -72,6 +74,7 @@ def main():
         
         mlflow.set_tag("mlflow_backend", mlflow_backend)
         mlflow.set_tag("stage", "evaluation")
+        mlflow.set_tag("model_type", "RandomForestClassifier")
         
         # Load model
         logger.info("Loading model for evaluation...")
@@ -133,6 +136,15 @@ def main():
         mlflow.log_metric("false_negatives", int(cm[1][0]))
         mlflow.log_metric("true_positives", int(cm[1][1]))
         
+        total_samples = cm.sum()
+        correctly_classified = cm.trace()
+        misclassified = total_samples - correctly_classified
+        
+        mlflow.log_metric("total_samples", int(total_samples))
+        mlflow.log_metric("correctly_classified", int(correctly_classified))
+        mlflow.log_metric("misclassified", int(misclassified))
+        mlflow.log_metric("error_rate", float(misclassified / total_samples))
+        
         # Classification report
         report = classification_report(y_test, y_pred, 
                                       target_names=['Sadness', 'Happiness'],
@@ -143,8 +155,10 @@ def main():
         
         mlflow.log_metric("sadness_precision", report['Sadness']['precision'])
         mlflow.log_metric("sadness_recall", report['Sadness']['recall'])
+        mlflow.log_metric("sadness_f1", report['Sadness']['f1-score'])
         mlflow.log_metric("happiness_precision", report['Happiness']['precision'])
         mlflow.log_metric("happiness_recall", report['Happiness']['recall'])
+        mlflow.log_metric("happiness_f1", report['Happiness']['f1-score'])
         
         mlflow.sklearn.log_model(model, "evaluated_model")
         

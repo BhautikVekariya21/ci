@@ -8,23 +8,25 @@ from sklearn.ensemble import RandomForestClassifier
 from utils import load_params, logger
 
 def setup_mlflow():
-    """Setup MLflow - DagsHub in CI, local otherwise"""
+    """Setup MLflow with token-based authentication for DagsHub"""
     
-    # Check if running in GitHub Actions
     is_ci = os.getenv('CI') == 'true'
     dagshub_token = os.getenv('DAGSHUB_TOKEN')
     
     if is_ci and dagshub_token:
-        # Use DagsHub in CI
-        try:
-            import dagshub
-            dagshub.init(repo_owner='BhautikVekariya21', repo_name='ci', mlflow=True)
-            logger.info("✅ Using DagsHub MLflow tracking")
-            return "dagshub"
-        except Exception as e:
-            logger.warning(f"⚠️ DagsHub init failed: {e}, using local MLflow")
-            mlflow.set_tracking_uri("file:./mlruns")
-            return "local"
+        # Use DagsHub with token authentication (no OAuth)
+        dagshub_url = "https://dagshub.com/BhautikVekariya21/ci.mlflow"
+        
+        # Set environment variables for authentication
+        os.environ['MLFLOW_TRACKING_URI'] = dagshub_url
+        os.environ['MLFLOW_TRACKING_USERNAME'] = 'BhautikVekariya21'
+        os.environ['MLFLOW_TRACKING_PASSWORD'] = dagshub_token
+        
+        # Configure MLflow
+        mlflow.set_tracking_uri(dagshub_url)
+        
+        logger.info("✅ Using DagsHub MLflow with token authentication")
+        return "dagshub"
     else:
         # Use local MLflow for development
         mlflow.set_tracking_uri("file:./mlruns")
@@ -32,7 +34,7 @@ def setup_mlflow():
         return "local"
 
 def main():
-    # Setup MLflow (DagsHub or local)
+    # Setup MLflow (DagsHub with token or local)
     mlflow_backend = setup_mlflow()
     
     # Load all params
@@ -45,10 +47,11 @@ def main():
     # Start MLflow run
     with mlflow.start_run(run_name="random_forest_training"):
         
-        # Log backend type
+        # Log backend and tags
         mlflow.set_tag("mlflow_backend", mlflow_backend)
         mlflow.set_tag("model_type", "RandomForestClassifier")
         mlflow.set_tag("framework", "sklearn")
+        mlflow.set_tag("task", "sentiment_classification")
         
         # Log all parameters
         mlflow.log_params({
@@ -127,7 +130,7 @@ def main():
             feature_importance.to_csv("models/feature_importance.csv", index=False)
             mlflow.log_artifact("models/feature_importance.csv")
             
-            # Log top 5 feature importances as metrics
+            # Log top 5 feature importances
             for idx, row in feature_importance.head(5).iterrows():
                 mlflow.log_metric(f"feature_{int(row['feature_index'])}_importance", row['importance'])
         
