@@ -1,5 +1,5 @@
 [core]
-    remote = amzns3
+    remote = origin
     autostage = true
 ['remote "trash"']
     url = C:\Users\bhaut\AppData\Local\Temp
@@ -13,3 +13,8 @@
     url = s3://aws-s3-ci-cd
 ['remote "amzns3"']
     url = s3://amzn-s3-ci-cd
+['remote "origin"']
+    url = https://dagshub.com/BhautikVekariya21/ci.dvc
+    auth = basic
+    user = BhautikVekariya21
+    password = YOUR_DAGSHUB_TOKEN

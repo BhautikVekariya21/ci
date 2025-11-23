@@ -16,3 +16,4 @@ pytest
 pytest-flask
 requests
 python-dotenv
+dagshub

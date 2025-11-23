@@ -2,6 +2,7 @@
 import pandas as pd
 import pickle
 import json
+import dagshub
 import mlflow
 import mlflow.sklearn
 from sklearn.metrics import (
@@ -16,12 +17,15 @@ from sklearn.metrics import (
 
 # Set matplotlib backend BEFORE importing pyplot
 import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 from utils import load_params, logger
 import os
+
+# Initialize DagsHub
+dagshub.init(repo_owner='BhautikVekariya21', repo_name='ci', mlflow=True)
 
 def plot_confusion_matrix(y_test, y_pred, save_path="evaluation/confusion_matrix.png"):
     """Plot and save confusion matrix"""
@@ -41,13 +45,14 @@ def plot_confusion_matrix(y_test, y_pred, save_path="evaluation/confusion_matrix
 def main():
     params = load_params()['model_evaluation']['metrics']
     
-    # Set the same experiment as training
+    # Set experiment
     mlflow.set_experiment("sentiment_classification")
     
-    # Get the latest run or start a new one
+    # Start MLflow run
     with mlflow.start_run(run_name="model_evaluation"):
         
         # Load model
+        logger.info("Loading model for evaluation...")
         model = pickle.load(open("models/model.pkl", "rb"))
         test_df = pd.read_csv("data/features/test_bow.csv")
 
@@ -56,8 +61,10 @@ def main():
         
         # Log test dataset size
         mlflow.log_param("test_samples", len(X_test))
+        mlflow.log_param("n_features", X_test.shape[1])
 
         # Predictions
+        logger.info("Making predictions...")
         y_pred = model.predict(X_test)
         y_proba = model.predict_proba(X_test)[:, 1]
 
@@ -85,6 +92,11 @@ def main():
         metrics_dict["f1_score"] = f1
         mlflow.log_metric("f1_score", f1)
 
+        # Log metrics summary
+        logger.info("📊 Model Metrics:")
+        for metric_name, value in metrics_dict.items():
+            logger.info(f"  {metric_name}: {value:.4f}")
+
         # Save metrics locally
         os.makedirs("evaluation", exist_ok=True)
         with open("evaluation/metrics.json", "w") as f:
@@ -94,6 +106,7 @@ def main():
         mlflow.log_artifact("evaluation/metrics.json")
         
         # Create and log confusion matrix
+        logger.info("Creating confusion matrix...")
         cm = plot_confusion_matrix(y_test, y_pred)
         mlflow.log_artifact("evaluation/confusion_matrix.png")
         
@@ -103,7 +116,18 @@ def main():
         mlflow.log_metric("false_negatives", int(cm[1][0]))
         mlflow.log_metric("true_positives", int(cm[1][1]))
         
+        # Calculate and log additional metrics
+        total_samples = cm.sum()
+        correctly_classified = cm.trace()
+        misclassified = total_samples - correctly_classified
+        
+        mlflow.log_metric("total_samples", int(total_samples))
+        mlflow.log_metric("correctly_classified", int(correctly_classified))
+        mlflow.log_metric("misclassified", int(misclassified))
+        mlflow.log_metric("error_rate", float(misclassified / total_samples))
+        
         # Save classification report
+        logger.info("Generating classification report...")
         report = classification_report(y_test, y_pred, 
                                       target_names=['Sadness', 'Happiness'],
                                       output_dict=True)
@@ -111,10 +135,20 @@ def main():
         report_df.to_csv("evaluation/classification_report.csv")
         mlflow.log_artifact("evaluation/classification_report.csv")
         
-        # Log model signature and input example
+        # Log per-class metrics
+        mlflow.log_metric("sadness_precision", report['Sadness']['precision'])
+        mlflow.log_metric("sadness_recall", report['Sadness']['recall'])
+        mlflow.log_metric("sadness_f1", report['Sadness']['f1-score'])
+        
+        mlflow.log_metric("happiness_precision", report['Happiness']['precision'])
+        mlflow.log_metric("happiness_recall", report['Happiness']['recall'])
+        mlflow.log_metric("happiness_f1", report['Happiness']['f1-score'])
+        
+        # Log model
         mlflow.sklearn.log_model(model, "evaluated_model")
 
-        logger.info(f"Evaluation complete and logged to MLflow: {metrics_dict}")
+        logger.info("✅ Evaluation complete and logged to DagsHub")
+        logger.info(f"🌐 View results: https://dagshub.com/BhautikVekariya21/ci")
 
 if __name__ == "__main__":
     main()

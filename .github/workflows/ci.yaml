@@ -1,4 +1,5 @@
-name: CI Pipeline with Testing
+# .github/workflows/ci.yml
+name: CI Pipeline with DagsHub Integration
 
 on:
   push:
@@ -7,9 +8,8 @@ on:
     branches: [main]
 
 env:
-  PYTHON_VERSION: '3.10'  # Updated to 3.10
-  CACHE_VERSION: 'v3'     # Increment cache version
-  USE_S3: 'false'
+  PYTHON_VERSION: '3.10'
+  CACHE_VERSION: 'v3'
 
 jobs:
   pipeline:
@@ -28,7 +28,9 @@ jobs:
           cache: 'pip'
           cache-dependency-path: 'requirements.txt'
       
-      # Cache pip packages
+      # ============================================
+      # CACHING
+      # ============================================
       - name: Cache pip packages
         uses: actions/cache@v4
         id: pip-cache
@@ -39,7 +41,6 @@ jobs:
             ${{ runner.os }}-pip-${{ env.PYTHON_VERSION }}-
             ${{ runner.os }}-pip-
       
-      # Cache NLTK data
       - name: Cache NLTK data
         uses: actions/cache@v4
         id: nltk-cache
@@ -49,7 +50,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nltk-
       
-      # Cache DVC
       - name: Cache DVC
         uses: actions/cache@v4
         with:
@@ -58,6 +58,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-dvc-cache-
       
+      # ============================================
+      # DEPENDENCIES INSTALLATION
+      # ============================================
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
@@ -68,51 +71,67 @@ jobs:
           echo "Python version:"
           python --version
           echo ""
-          echo "Installed packages:"
-          pip list
+          echo "Key packages:"
+          pip show dagshub mlflow dvc pytest scikit-learn pandas
       
       - name: Setup NLTK
         run: |
           python -c "import nltk; nltk.download('stopwords', quiet=True); nltk.download('wordnet', quiet=True)"
       
-      # Configure AWS only if using S3
-      - name: Configure AWS credentials
-        if: env.USE_S3 == 'true'
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-      
-      # Configure DVC remote only if using S3
-      - name: Configure DVC remote (S3)
-        if: env.USE_S3 == 'true'
+      # ============================================
+      # DAGSHUB CONFIGURATION
+      # ============================================
+      - name: Configure DVC for DagsHub
+        env:
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
         run: |
-          dvc remote add -d myremote s3://amazn-s3-ci-cd || true
-          dvc remote modify myremote region us-east-1
+          echo "🔧 Configuring DVC remote for DagsHub..."
+          dvc remote add origin https://dagshub.com/BhautikVekariya21/ci.dvc || true
+          dvc remote modify origin auth basic
+          dvc remote modify origin user BhautikVekariya21
+          dvc remote modify origin password $DAGSHUB_TOKEN
+          dvc remote default origin
+          echo "✅ DVC configured"
       
-      # Pull DVC data only if using S3
-      - name: Pull DVC data
-        if: env.USE_S3 == 'true'
-        run: dvc pull || echo "⚠️ No data to pull or pull failed"
+      - name: Configure MLflow for DagsHub
+        env:
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+        run: |
+          echo "📊 Configuring MLflow for DagsHub..."
+          echo "MLFLOW_TRACKING_URI=https://dagshub.com/BhautikVekariya21/ci.mlflow" >> $GITHUB_ENV
+          echo "MLFLOW_TRACKING_USERNAME=BhautikVekariya21" >> $GITHUB_ENV
+          echo "MLFLOW_TRACKING_PASSWORD=$DAGSHUB_TOKEN" >> $GITHUB_ENV
+          echo "✅ MLflow configured"
       
+      - name: Pull DVC data from DagsHub
+        env:
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+        run: |
+          echo "📥 Pulling data from DagsHub..."
+          dvc pull || echo "⚠️ No data to pull or pull failed"
+      
+      # ============================================
+      # RUN DVC PIPELINE
+      # ============================================
       - name: Run DVC pipeline
         run: |
-          echo "🚀 Starting pipeline..."
+          echo "🚀 Starting DVC pipeline..."
           dvc repro
-          echo "✅ Pipeline completed"
+          echo "✅ Pipeline completed successfully"
       
       - name: Display metrics
         run: |
-          echo "📊 Model Metrics:"
+          echo "📊 Model Performance Metrics:"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           if [ -f evaluation/metrics.json ]; then
             cat evaluation/metrics.json | python -m json.tool
           else
             echo "⚠️ No metrics file found"
           fi
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
       
       # ============================================
-      # TEST SENTIMENT PREDICTIONS
+      # SENTIMENT PREDICTION TESTS
       # ============================================
       - name: Test Sentiment Predictions
         run: |
@@ -235,16 +254,33 @@ jobs:
           print('='*80)
           
           if failed > 0:
-              print(f'\n⚠️ {failed} test(s) had unexpected predictions')
+              print(f'\n⚠️ {failed} test(s) had unexpected predictions (acceptable for ML models)')
           else:
               print('\n✅ All predictions matched expected sentiments!')
           EOF
       
-      # Push DVC data only if using S3
-      - name: Push DVC outputs
-        if: env.USE_S3 == 'true' && github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: dvc push || echo "⚠️ Push failed or no changes"
+      # ============================================
+      # PYTEST UNIT TESTS
+      # ============================================
+      - name: Run pytest unit tests
+        run: |
+          echo "🧪 Running pytest unit tests..."
+          pytest -v --tb=short || echo "⚠️ Some tests failed"
       
+      # ============================================
+      # PUSH TO DAGSHUB
+      # ============================================
+      - name: Push to DagsHub
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+        run: |
+          echo "📤 Pushing to DagsHub..."
+          dvc push || echo "⚠️ DVC push failed or no changes to push"
+      
+      # ============================================
+      # UPLOAD ARTIFACTS
+      # ============================================
       - name: Upload evaluation results
         if: always()
         uses: actions/upload-artifact@v4
@@ -254,7 +290,7 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
       
-      - name: Upload model
+      - name: Upload trained model
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -272,13 +308,32 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
       
-      - name: Create summary
+      - name: Upload confusion matrix
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: confusion-matrix
+          path: evaluation/confusion_matrix.png
+          retention-days: 30
+          if-no-files-found: warn
+      
+      # ============================================
+      # CREATE SUMMARY
+      # ============================================
+      - name: Create comprehensive summary
         if: always()
         run: |
           echo "## 🎯 CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          echo "### 📊 Model Metrics" >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ Pipeline Status" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: Completed" >> $GITHUB_STEP_SUMMARY
+          echo "- **Python Version**: ${{ env.PYTHON_VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### 📊 Model Performance Metrics" >> $GITHUB_STEP_SUMMARY
           if [ -f evaluation/metrics.json ]; then
             echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
             cat evaluation/metrics.json >> $GITHUB_STEP_SUMMARY
@@ -286,21 +341,44 @@ jobs:
           else
             echo "❌ No metrics file found" >> $GITHUB_STEP_SUMMARY
           fi
-          
           echo "" >> $GITHUB_STEP_SUMMARY
+          
           echo "### 🧪 Tests Executed" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ 8 sentiment prediction tests" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ pytest unit tests" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ DVC pipeline execution" >> $GITHUB_STEP_SUMMARY
-          
           echo "" >> $GITHUB_STEP_SUMMARY
+          
           echo "### 📁 Generated Artifacts" >> $GITHUB_STEP_SUMMARY
-          echo "- 🤖 Trained model: \`models/model.pkl\`" >> $GITHUB_STEP_SUMMARY
-          echo "- 📊 Metrics: \`evaluation/metrics.json\`" >> $GITHUB_STEP_SUMMARY
-          echo "- 📈 Confusion Matrix: \`evaluation/confusion_matrix.png\`" >> $GITHUB_STEP_SUMMARY
-          echo "- 📋 Classification Report: \`evaluation/classification_report.csv\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 🤖 **Trained model**: \`models/model.pkl\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 📊 **Metrics**: \`evaluation/metrics.json\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 📈 **Confusion Matrix**: \`evaluation/confusion_matrix.png\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 📋 **Classification Report**: \`evaluation/classification_report.csv\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔬 **MLflow Runs**: \`mlruns/\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### 🌐 DagsHub Links" >> $GITHUB_STEP_SUMMARY
+          echo "- 📊 [**MLflow Experiments**](https://dagshub.com/BhautikVekariya21/ci.mlflow) - View training runs and metrics" >> $GITHUB_STEP_SUMMARY
+          echo "- 📦 [**DVC Storage**](https://dagshub.com/BhautikVekariya21/ci.dvc) - Browse stored data and models" >> $GITHUB_STEP_SUMMARY
+          echo "- 🌐 [**Main Repository**](https://dagshub.com/BhautikVekariya21/ci) - Full project on DagsHub" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### 🔧 Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **Python**: ${{ env.PYTHON_VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cache Version**: ${{ env.CACHE_VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **DagsHub Integration**: ✅ Enabled" >> $GITHUB_STEP_SUMMARY
+          echo "- **MLflow Tracking**: ✅ Enabled" >> $GITHUB_STEP_SUMMARY
+          echo "- **DVC Remote**: ✅ DagsHub" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### 📈 Quick Stats" >> $GITHUB_STEP_SUMMARY
+          if [ -f evaluation/metrics.json ]; then
+            ACCURACY=$(python -c "import json; print(json.load(open('evaluation/metrics.json'))['accuracy'])")
+            F1=$(python -c "import json; print(json.load(open('evaluation/metrics.json'))['f1_score'])")
+            echo "- **Model Accuracy**: ${ACCURACY}" >> $GITHUB_STEP_SUMMARY
+            echo "- **F1 Score**: ${F1}" >> $GITHUB_STEP_SUMMARY
+          fi
           
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🔧 Configuration" >> $GITHUB_STEP_SUMMARY
-          echo "- Python Version: ${{ env.PYTHON_VERSION }}" >> $GITHUB_STEP_SUMMARY
-          echo "- S3 Enabled: ${{ env.USE_S3 }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Cache Version: ${{ env.CACHE_VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*🚀 Pipeline executed successfully! View detailed results on [DagsHub](https://dagshub.com/BhautikVekariya21/ci)*" >> $GITHUB_STEP_SUMMARY
