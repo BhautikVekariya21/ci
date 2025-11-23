@@ -1,3 +1,4 @@
+# dvc.yaml
 stages:
   data_ingestion:
     cmd: python src/data_ingestion.py
@@ -50,4 +51,5 @@ stages:
       - evaluation/metrics.json:
           cache: false
     outs:
-      - evaluation
+      - evaluation/confusion_matrix.png
+      - evaluation/classification_report.csv
