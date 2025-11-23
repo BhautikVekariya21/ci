@@ -83,11 +83,11 @@ def main():
         with open("models/model.pkl", "wb") as f:
             pickle.dump(model, f)
         
-        # Log model to MLflow (DagsHub)
+        # Log model to MLflow (DagsHub) - REMOVED registered_model_name
         mlflow.sklearn.log_model(
             model, 
-            "model",
-            registered_model_name="RandomForestSentimentClassifier"
+            "model"
+            # REMOVED: registered_model_name="RandomForestSentimentClassifier"
         )
         
         # Log model artifact
@@ -111,8 +111,13 @@ def main():
         mlflow.log_metric("model_n_estimators", model.n_estimators)
         mlflow.log_metric("model_max_depth", model.max_depth if model.max_depth else 0)
         
+        # Tag the model
+        mlflow.set_tag("model_type", "RandomForestClassifier")
+        mlflow.set_tag("framework", "sklearn")
+        mlflow.set_tag("task", "sentiment_classification")
+        
         logger.info("✅ Model trained and logged to DagsHub successfully")
-        logger.info(f"🌐 View on DagsHub: https://dagshub.com/BhautikVekariya21/ci")
+        logger.info(f"🌐 View on DagsHub: https://dagshub.com/BhautikVekariya21/ci.mlflow")
 
 if __name__ == "__main__":
     main()

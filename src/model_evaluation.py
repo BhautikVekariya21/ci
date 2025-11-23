@@ -15,7 +15,6 @@ from sklearn.metrics import (
     classification_report
 )
 
-# Set matplotlib backend BEFORE importing pyplot
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -144,11 +143,15 @@ def main():
         mlflow.log_metric("happiness_recall", report['Happiness']['recall'])
         mlflow.log_metric("happiness_f1", report['Happiness']['f1-score'])
         
-        # Log model
+        # Log model - REMOVED registered_model_name
         mlflow.sklearn.log_model(model, "evaluated_model")
+        
+        # Tag the run
+        mlflow.set_tag("stage", "evaluation")
+        mlflow.set_tag("model_type", "RandomForestClassifier")
 
         logger.info("✅ Evaluation complete and logged to DagsHub")
-        logger.info(f"🌐 View results: https://dagshub.com/BhautikVekariya21/ci")
+        logger.info(f"🌐 View results: https://dagshub.com/BhautikVekariya21/ci.mlflow")
 
 if __name__ == "__main__":
     main()
