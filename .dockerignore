@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.git/
+.dvc/cache/
+.pytest_cache/
+htmlcov/
+mlruns/
+data/
+tests/
+*.ipynb
+.venv/
+venv/

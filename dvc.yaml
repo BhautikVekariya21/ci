@@ -1,5 +1,29 @@
 # dvc.yaml
 stages:
+  aqi_build_features:
+    cmd: python -m src.aqi.build_features
+    deps:
+      - src/aqi/build_features.py
+      - src/aqi/cpcb.py
+      - src/aqi/locations.py
+      - data/aqi/raw.csv
+      - params.yaml
+    outs:
+      - data/aqi/features.csv
+
+  aqi_train:
+    cmd: python -m src.aqi.train
+    deps:
+      - src/aqi/train.py
+      - src/aqi/cpcb.py
+      - data/aqi/features.csv
+      - params.yaml
+    outs:
+      - models/aqi_model.pkl
+    metrics:
+      - evaluation/aqi_metrics.json:
+          cache: false
+
   data_ingestion:
     cmd: python src/data_ingestion.py
     deps:

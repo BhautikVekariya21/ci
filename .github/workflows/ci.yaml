@@ -12,6 +12,29 @@ env:
   CACHE_VERSION: 'v3'
 
 jobs:
+  aqi-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pandas numpy scikit-learn pyyaml pytest flask
+
+      - name: Run AQI unit tests
+        run: pytest tests/test_aqi_cpcb.py -v
+
+      - name: Build Docker image
+        run: |
+          mkdir -p models && touch models/aqi_model.pkl
+          docker build -t aqi-model:${{ github.sha }} .
+
   pipeline:
     runs-on: ubuntu-latest
     
