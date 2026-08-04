@@ -28,6 +28,11 @@ models/*.pkl
 # Evaluation
 evaluation/
 
+# Logs and scratch experiment output
+logs_*.txt
+errors.log
+*.log
+
 # DVC
 .dvc/tmp/
 .dvc/cache/

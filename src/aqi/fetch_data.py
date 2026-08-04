@@ -58,21 +58,42 @@ def _hourly_frame(payload, varmap):
     return pd.DataFrame(data)
 
 
+def _date_chunks(start_date, end_date, months=6):
+    """Split a range into windows. Open-Meteo times out on multi-year spans."""
+    start = pd.Timestamp(start_date)
+    end = pd.Timestamp(end_date)
+    chunks = []
+    while start <= end:
+        stop = min(start + pd.DateOffset(months=months) - pd.Timedelta(days=1), end)
+        chunks.append((start.strftime("%Y-%m-%d"), stop.strftime("%Y-%m-%d")))
+        start = stop + pd.Timedelta(days=1)
+    return chunks
+
+
 def fetch_city(session, city, info, start_date, end_date):
     """Fetch pollutants + weather for one city, merged on the hour."""
-    common = {"latitude": info["lat"], "longitude": info["lon"],
-              "start_date": start_date, "end_date": end_date, "timezone": "Asia/Kolkata"}
+    parts = []
+    for chunk_start, chunk_end in _date_chunks(start_date, end_date):
+        common = {"latitude": info["lat"], "longitude": info["lon"],
+                  "start_date": chunk_start, "end_date": chunk_end,
+                  "timezone": "Asia/Kolkata"}
 
-    air = _hourly_frame(_get(session, AIR_QUALITY_URL,
-                             {**common, "hourly": ",".join(POLLUTANT_VARS)}), POLLUTANT_VARS)
-    if air.empty:
+        air = _hourly_frame(_get(session, AIR_QUALITY_URL,
+                                 {**common, "hourly": ",".join(POLLUTANT_VARS)}), POLLUTANT_VARS)
+        if air.empty:
+            continue
+
+        weather_vars = ",".join(v for v in WEATHER_VARS if v != "boundary_layer_height")
+        weather = _hourly_frame(_get(session, WEATHER_ARCHIVE_URL,
+                                     {**common, "hourly": weather_vars}), WEATHER_VARS)
+
+        parts.append(air.merge(weather, on="datetime", how="left") if not weather.empty else air)
+        time.sleep(0.5)
+
+    if not parts:
         return pd.DataFrame()
 
-    weather_vars = ",".join(v for v in WEATHER_VARS if v != "boundary_layer_height")
-    weather = _hourly_frame(_get(session, WEATHER_ARCHIVE_URL,
-                                 {**common, "hourly": weather_vars}), WEATHER_VARS)
-
-    df = air.merge(weather, on="datetime", how="left") if not weather.empty else air
+    df = pd.concat(parts, ignore_index=True).drop_duplicates("datetime")
     df.insert(0, "City", city)
     df.insert(1, "State", info["state"])
     return df

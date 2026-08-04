@@ -3,6 +3,13 @@
 Split is chronological, not random: a random split would put a city's 14:00 and
 16:00 readings on opposite sides of the boundary, and neighbouring hours are so
 correlated that the test score would be meaningless.
+
+The target is trained in log space (log1p). The per-season diagnostic showed the
+error is multiplicative -- roughly 10% relative in every season and AQI band --
+while squared error on the raw, right-skewed target (skew 1.46) over-weights the
+few Severe hours. Fitting log1p(AQI) matches the error structure and lowers MAE
+in every season; predictions are inverted with expm1 and clipped to the CPCB
+[0, 500] range.
 """
 import argparse
 import json
@@ -53,15 +60,16 @@ def evaluate(y_true, y_pred, label):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--features", default="data/aqi/features.csv")
+    p.add_argument("--features", default="data/aqi/features.parquet")
     p.add_argument("--model-out", default="models/aqi_model.pkl")
     p.add_argument("--metrics-out", default="evaluation/aqi_metrics.json")
     p.add_argument("--params", default="params.yaml")
     args = p.parse_args()
 
     cfg = yaml.safe_load(open(args.params))["aqi"]
+    log_target = cfg.get("log_target", True)
 
-    df = pd.read_csv(args.features, parse_dates=["datetime"]).sort_values("datetime")
+    df = pd.read_parquet(args.features).sort_values("datetime")
     train, test = chronological_split(df, cfg["test_fraction"])
 
     drop = ["City", "State", "datetime", "target_AQI"]
@@ -79,12 +87,22 @@ def main():
 
     model_cfg = dict(cfg["model"])
     name = model_cfg.pop("type")
-    print(f"\nTraining {name} on {len(feature_cols)} features...")
+    print(f"\nTraining {name} on {len(feature_cols)} features"
+          f"{' (log target)' if log_target else ''}...")
     model = MODELS[name](**model_cfg)
-    model.fit(X_train, y_train)
 
-    metrics = {**evaluate(y_train, model.predict(X_train), "train"),
-               **evaluate(y_test, model.predict(X_test), "test")}
+    # Fit in log space when enabled; invert with expm1 and clip to CPCB [0, 500].
+    fit_target = np.log1p(np.clip(y_train, 0, None)) if log_target else y_train
+    model.fit(X_train, fit_target)
+
+    def predict(X):
+        p = model.predict(X)
+        if log_target:
+            p = np.expm1(p)
+        return np.clip(p, 0, 500)
+
+    metrics = {**evaluate(y_train, predict(X_train), "train"),
+               **evaluate(y_test, predict(X_test), "test")}
 
     # Persistence baseline: predict AQI stays at its last observed value.
     if "AQI_Lag_1h" in feature_cols:
@@ -104,6 +122,7 @@ def main():
     with open(args.model_out, "wb") as f:
         pickle.dump({"model": model, "feature_cols": feature_cols,
                      "city_codes": city_codes,
+                     "log_target": log_target,
                      "horizon_hours": cfg["horizon_hours"]}, f)
 
     os.makedirs(os.path.dirname(args.metrics_out), exist_ok=True)

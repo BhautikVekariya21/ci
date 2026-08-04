@@ -1,10 +1,11 @@
 aqi:
   fetch:
-    start_date: 2024-06-01
-    end_date: 2026-08-02
+    start_date: 2022-08-05
+    end_date: 2026-08-03
   horizon_hours: 24        # forecast AQI this many hours ahead
   min_history_hours: 24    # require this much lag history per row
   test_fraction: 0.20      # chronological holdout, not random
+  log_target: true         # train on log1p(AQI); error is multiplicative
   model:
     type: hist_gradient_boosting
     max_iter: 500

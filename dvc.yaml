@@ -9,14 +9,14 @@ stages:
       - data/aqi/raw.csv
       - params.yaml
     outs:
-      - data/aqi/features.csv
+      - data/aqi/features.parquet
 
   aqi_train:
     cmd: python -m src.aqi.train
     deps:
       - src/aqi/train.py
       - src/aqi/cpcb.py
-      - data/aqi/features.csv
+      - data/aqi/features.parquet
       - params.yaml
     outs:
       - models/aqi_model.pkl

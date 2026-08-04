@@ -24,6 +24,9 @@ BREAKPOINTS = {
 # CPCB averaging windows: 24h for particulates/NO2/SO2/NH3, 8h for CO/O3.
 AVERAGING_HOURS = {"PM2.5": 24, "PM10": 24, "NO2": 24, "SO2": 24, "NH3": 24, "CO": 8, "O3": 8}
 
+# CPCB takes the max 8-hourly average of the day for these, not the latest one.
+MAX_8H_POLLUTANTS = {"CO", "O3"}
+
 AQI_CATEGORIES = [(50, "Good"), (100, "Satisfactory"), (200, "Moderate"),
                   (300, "Poor"), (400, "Very Poor"), (np.inf, "Severe")]
 
@@ -46,10 +49,21 @@ def sub_index(concentration: pd.Series, pollutant: str) -> pd.Series:
 
 
 def rolling_average(df: pd.DataFrame, pollutant: str, group_col: str = "City") -> pd.Series:
-    """CPCB-mandated trailing average of a pollutant, computed per city."""
+    """CPCB-mandated trailing average of a pollutant, computed per city.
+
+    For CO and O3 the CPCB sub-index uses the MAXIMUM 8-hourly average of the
+    day, not the current 8h mean. Using the plain trailing mean makes AQI track
+    ozone's diurnal cycle -- Delhi swings ~120 points between afternoon peak and
+    night -- while published AQI stays flat, because the daily max only moves
+    when a new peak is set.
+    """
     hours = AVERAGING_HOURS[pollutant]
-    return (df.groupby(group_col, sort=False)[pollutant]
-              .transform(lambda s: s.rolling(hours, min_periods=max(2, hours // 2)).mean()))
+    s = df.groupby(group_col, sort=False)[pollutant]
+    if pollutant in MAX_8H_POLLUTANTS:
+        return s.transform(
+            lambda x: x.rolling(hours, min_periods=max(2, hours // 2)).mean()
+                       .rolling(24, min_periods=12).max())
+    return s.transform(lambda x: x.rolling(hours, min_periods=max(2, hours // 2)).mean())
 
 
 def compute_aqi(df: pd.DataFrame, group_col: str = "City") -> pd.DataFrame:

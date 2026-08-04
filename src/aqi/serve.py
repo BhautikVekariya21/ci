@@ -2,6 +2,7 @@
 import os
 import pickle
 
+import numpy as np
 import pandas as pd
 from flask import Flask, jsonify, request
 
@@ -44,6 +45,11 @@ def predict():
                        missing_count=len(missing)), 400
 
     preds = bundle["model"].predict(df[bundle["feature_cols"]].values)
+    # Model is trained in log space when log_target is set; invert and clip to
+    # the CPCB [0, 500] range.
+    if bundle.get("log_target"):
+        preds = np.expm1(preds)
+    preds = np.clip(preds, 0, 500)
     return jsonify(horizon_hours=bundle["horizon_hours"],
                    predicted_aqi=[round(float(p), 1) for p in preds])
 

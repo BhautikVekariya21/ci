@@ -77,3 +77,29 @@ def test_rolling_average_is_per_city():
     delhi = out[out["City"] == "Delhi"]["AQI"].iloc[-1]
     mumbai = out[out["City"] == "Mumbai"]["AQI"].iloc[-1]
     assert delhi > mumbai * 3
+
+
+def test_ozone_uses_max_8h_average_not_latest():
+    """CPCB scores O3 on the day's peak 8h mean, so AQI must not fall away
+    with the evening ozone decline the way a plain trailing mean does."""
+    n = 60
+    # Ozone peaks mid-series then collapses to near zero.
+    o3 = [20.0] * 20 + [200.0] * 12 + [5.0] * 28
+    df = _frame(n, **{"PM2.5": [1.0] * n, "PM10": [1.0] * n, "NO2": [1.0] * n, "O3": o3})
+    out = compute_aqi(df)
+
+    peak = out["SubIndex_O3"].iloc[31]
+    # 19h after the peak -- still inside the 24h window, so it must be retained
+    # even though current ozone has collapsed to 5 ug/m3.
+    later = out["SubIndex_O3"].iloc[50]
+    assert peak > 150
+    assert later == pytest.approx(peak, rel=0.01)
+
+
+def test_ozone_peak_expires_after_24h():
+    n = 90
+    o3 = [20.0] * 10 + [200.0] * 12 + [5.0] * 68
+    df = _frame(n, **{"PM2.5": [1.0] * n, "PM10": [1.0] * n, "NO2": [1.0] * n, "O3": o3})
+    out = compute_aqi(df)
+    # Beyond the 24h window the stale peak must no longer drive the sub-index.
+    assert out["SubIndex_O3"].iloc[-1] < out["SubIndex_O3"].iloc[21] / 2
