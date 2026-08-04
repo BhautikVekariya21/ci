@@ -26,7 +26,11 @@ data/aqi/
 models/*.pkl
 
 # Evaluation
-evaluation/
+# Keep human-readable results in git; exclude everything else in the dir.
+evaluation/*
+!evaluation/aqi_metrics.json
+!evaluation/metrics.json
+!evaluation/confusion_matrix.png
 
 # Logs and scratch experiment output
 logs_*.txt
